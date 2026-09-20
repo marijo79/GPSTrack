@@ -108,8 +108,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/dragon/PythonPtojects/GPSTrack
-ExecStart=/home/dragon/PythonPtojects/GPSTrack/.venv/bin/python -m gpstrack.main
+WorkingDirectory=/home/dragon/PythonProjects/GPSTrack
+ExecStart=/home/dragon/PythonProjects/GPSTrack/.venv/bin/python -m gpstrack.main
 Restart=on-failure
 RestartSec=5
 
