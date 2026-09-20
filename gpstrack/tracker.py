@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from typing import Optional
 
 from gpstrack.gpsd_client import DeviceEvent, Report, StaleTimeout, TPV
@@ -39,17 +40,39 @@ class FixTracker:
         notifier: Notifier,
         distance_threshold_km: float = 5.0,
         storage: Optional[TrackStorage] = None,
+        status_interval_seconds: float = 60.0,
     ):
         self.notifier = notifier
         self.distance_threshold_km = distance_threshold_km
         self.storage = storage
+        self.status_interval_seconds = status_interval_seconds
 
         self._had_fix: Optional[bool] = None
         self._last_point: Optional[tuple[float, float]] = None
+        self._current_point: Optional[tuple[float, float]] = None
         self._device_connected: Optional[bool] = None
         self._stale_notified = False
+        self._last_status_monotonic: Optional[float] = None
+
+        self.log_status()
+
+    def log_status(self) -> None:
+        self._last_status_monotonic = time.monotonic()
+        if self._had_fix is None:
+            logger.info("GPS status: NO DATA YET")
+        elif self._had_fix and self._current_point is not None:
+            lat, lon = self._current_point
+            logger.info("GPS status: FIX (%.6f, %.6f)", lat, lon)
+        else:
+            logger.info("GPS status: NO FIX")
+
+    def _maybe_log_status(self) -> None:
+        now = time.monotonic()
+        if self._last_status_monotonic is None or now - self._last_status_monotonic >= self.status_interval_seconds:
+            self.log_status()
 
     def process(self, report: Report) -> None:
+        self._maybe_log_status()
         if isinstance(report, TPV):
             self._process_tpv(report)
         elif isinstance(report, DeviceEvent):
@@ -71,6 +94,7 @@ class FixTracker:
 
         self._check_fix_transition(tpv)
         if tpv.has_fix and tpv.lat is not None and tpv.lon is not None:
+            self._current_point = (tpv.lat, tpv.lon)
             self._check_distance(tpv.lat, tpv.lon)
 
     def _check_fix_transition(self, tpv: TPV) -> None:

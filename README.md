@@ -9,6 +9,9 @@ Watches [gpsd](https://gpsd.io/) and sends a notification when:
 - no data of any kind arrives from gpsd for a while (`--stale-timeout-seconds`,
   default 20s) -- catches disconnects gpsd doesn't cleanly report
 
+It also logs the current GPS status (fix coordinates, or `NO FIX`) right after
+startup and every `--status-interval-seconds` (default 60s) afterward.
+
 ## Requirements
 
 - A running `gpsd` instance (default: `127.0.0.1:2947`)
@@ -18,7 +21,7 @@ Watches [gpsd](https://gpsd.io/) and sends a notification when:
 ## Usage
 
 ```bash
-python -m gpstrack.main [--host HOST] [--port PORT] [--distance-threshold-km 5.0] [--db PATH] [--stale-timeout-seconds 20.0] [-v]
+python -m gpstrack.main [--host HOST] [--port PORT] [--distance-threshold-km 5.0] [--db PATH] [--stale-timeout-seconds 20.0] [--status-interval-seconds 60.0] [-v]
 ```
 
 Every TPV report and every notification event is logged to a SQLite database
@@ -92,6 +95,52 @@ Or run a one-off query without an interactive session:
 ```bash
 sqlite3 -header -column sqlite/gpstrack.db "SELECT * FROM events ORDER BY id DESC LIMIT 20;"
 ```
+
+## Running as a daemon (systemd user service)
+
+Create `~/.config/systemd/user/gpstrack.service`:
+
+```ini
+[Unit]
+Description=GPSTrack - gpsd fix/device/distance notifier
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/dragon/PythonPtojects/GPSTrack
+ExecStart=/home/dragon/PythonPtojects/GPSTrack/.venv/bin/python -m gpstrack.main
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+Enable lingering so the service starts at boot even without an active login
+session, then enable and start it:
+
+```bash
+loginctl enable-linger dragon
+systemctl --user daemon-reload
+systemctl --user enable --now gpstrack.service
+```
+
+Useful commands:
+
+```bash
+systemctl --user status gpstrack.service          # health check
+journalctl --user-unit gpstrack.service -f        # tail logs live
+journalctl --user-unit gpstrack.service -n 100    # last 100 lines
+systemctl --user restart gpstrack.service
+systemctl --user stop gpstrack.service
+systemctl --user disable --now gpstrack.service   # stop and remove from boot
+```
+
+Note: on some systems `journalctl --user -u gpstrack.service` (the usual
+form) returns nothing if journald is configured with `Storage=volatile` and
+no split user journal -- use `journalctl --user-unit gpstrack.service`
+instead, which reads it from the system journal.
 
 ## Tests
 
